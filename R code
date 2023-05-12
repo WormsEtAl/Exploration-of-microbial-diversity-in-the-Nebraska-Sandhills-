@@ -1,0 +1,699 @@
+########Water Column Data#############
+
+library(vegan)
+library(compositions)
+library(corrplot)
+library(tidyverse)
+library(emmeans)
+library(phyloseq)
+library(agricolae)
+library(glmmTMB)
+library(car)
+library(ggeffects)
+library(viridis)
+library(maptools)
+library(ncf)
+library(ggplot2)
+library(mice)
+library(zCompositions)
+library(rsq)
+library(multcomp)
+library(ape)
+
+###Set working directory
+setwd("~/OneDrive - University of Florida/Alkaline Lakes/All three years SALCI/Water Column MS/")
+
+######Import table and map 
+
+##import mapping file
+mapping <-read.table("All_years_chem.txt", header=T, row.names=1, comment.char="", sep='\t')
+map.sub <- mapping[order(rownames(mapping)),]
+map<-subset(map.sub, map.sub$year!= "2019"& map.sub$Field.ID!="SHORELINE"& map.sub$Grower!="KOKJOHN LAKE")
+
+#import OTU tables for nematodes, bacteria, fungi and microbial euaryotes
+bacotu_taxa <- read.table("Bacteria_soil_water_normalized_final.csv",quote="", sep=",", row.names = 1, header=T, check.names=F,blank.lines.skip = FALSE)
+#bacotu_only <- bacotu_taxa[,1:163]
+bacotu_filtered<-subset(bacotu_taxa, select=colnames(bacotu_taxa) %in% rownames(map))
+bac <- bacotu_filtered[,order(colnames(bacotu_filtered))]
+
+
+rownames(map)==colnames(bac)
+
+
+###remove counts lower than 0.00001% of reads
+bac=bac[rowSums(bac[])>114,]
+
+######PCOA#####
+
+
+# How many zeros?
+sum(euk== 0) #214810
+count=0
+euk.just.esvs.1 <- data.frame(euk_beta[which(apply(euk_beta, 1,function(x){mean(x)}) > count),], 
+                              check.names=F)
+# count = 0.2 leads to 3818 ESVs rather than original 714, cutting out ESVs with fewer than 20 samples per row.
+
+# replace zeros
+euk.just.esvs.czm <- cmultRepl(t(euk.just.esvs.1),  label=0, method="CZM")
+
+# Vegdist and PCOA function in Ape package
+euk.just.esvs.pseudo.clr <- clr(euk.just.esvs.czm)
+
+
+euk.pseudo.dist <- vegdist(euk.just.esvs.pseudo.clr, method = "euclidean",binary = FALSE, diag = FALSE, upper = TRUE)
+euk.pseudo.pcx <- prcomp(euk.just.esvs.pseudo.clr)
+
+# Sum the total variance
+euk.pseudo.mvar <- sum(euk.pseudo.pcx$sdev^2)
+# Calculate the PC1 and PC2 variance
+PC1 <- paste("PC1: ", round(100*sum(euk.pseudo.pcx$sdev[1]^2)/euk.pseudo.mvar, 1),"%")
+PC2 <- paste("PC2: ", round(100*sum(euk.pseudo.pcx$sdev[2]^2)/euk.pseudo.mvar, 1),"%")
+# We are pasting together the component name and the variance to make an axes label
+
+
+# Make a pretty plot with no points yet:
+par(family = "serif")
+plot(euk.pseudo.pcx$x[,2] ~ euk.pseudo.pcx$x[,1], 
+     xlab=PC1, 
+     ylab=PC2,
+     cex=0.1,col="white",main="A)",
+     
+)
+
+# FUNCTION:
+Plot_ConvexHull<-function(xcoord, ycoord, lcolor){
+  hpts <- chull(x = xcoord, y = ycoord)
+  hpts <- c(hpts, hpts[1])
+  lines(xcoord[hpts], ycoord[hpts], col = lcolor)
+}
+#subset vectors for the positions in the metadata that correspond to groups
+Bp21.ptx <- which(map$Yearplusid=="Border Prairie 2021")
+Bw21.ptx <- which(map$Yearplusid=="Border Water 2021")
+Bl21.ptx <- which(map$Yearplusid=="Border Lake 2021")
+Ip21.ptx <- which(map$Yearplusid=="Island Prairie 2021")
+Iw21.ptx <- which(map$Yearplusid=="Island Water 2021")
+Il21.ptx <- which(map$Yearplusid=="Island Lake 2021")
+Gp21.ptx <- which(map$Yearplusid=="Gimlet Prairie 2021")
+Gw21.ptx <- which(map$Yearplusid=="Gimlet Water 2021")
+Gl21.ptx <- which(map$Yearplusid=="Gimlet Lake 2021")
+BNp21.ptx <- which(map$Yearplusid=="Bean Prairie 2021")
+BNw21.ptx <- which(map$Yearplusid=="Bean Water 2021")
+BNl21.ptx <- which(map$Yearplusid=="Bean Lake 2021")
+
+Bp20.ptx <- which(map$Yearplusid=="Border Prairie 2020")
+Bw20.ptx <- which(map$Yearplusid=="Border Water 2020")
+Bl20.ptx <- which(map$Yearplusid=="Border Lake 2020")
+Ip20.ptx <- which(map$Yearplusid=="Island Prairie 2020")
+Iw20.ptx <- which(map$Yearplusid=="Island Water 2020")
+Il20.ptx <- which(map$Yearplusid=="Island Lake 2020")
+Gp20.ptx <- which(map$Yearplusid=="Gimlet Prairie 2020")
+Gw20.ptx <- which(map$Yearplusid=="Gimlet Water 2020")
+Gl20.ptx <- which(map$Yearplusid=="Gimlet Lake 2020")
+BNp20.ptx <- which(map$Yearplusid=="Bean Prairie 2020")
+BNw20.ptx <- which(map$Yearplusid=="Bean Water 2020")
+BNl20.ptx <- which(map$Yearplusid=="Bean Lake 2020")
+Prairie <- which(map$Field.ID == "PRAIRIE")
+Water <- which(map$Field.ID == "WATER")
+Sediment <-which(map$Field.ID=="SEDIMENT")
+Year2021 <-which(map$year=="2021")
+Year2020 <-which(map$year=="2020")
+# plot the points for each group using points()
+#2021
+points(euk.pseudo.pcx$x[Il21.ptx,2] ~ euk.pseudo.pcx$x[Il21.ptx,1],pch=17, cex=2.3, col="green3")
+points(euk.pseudo.pcx$x[Gl21.ptx,2] ~ euk.pseudo.pcx$x[Gl21.ptx,1],pch=17, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNl21.ptx,2] ~ euk.pseudo.pcx$x[BNl21.ptx,1], pch=17, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bl21.ptx,2] ~ euk.pseudo.pcx$x[Bl21.ptx,1], pch=17, cex=2.3, col="red3")
+points(euk.pseudo.pcx$x[Iw21.ptx,2] ~ euk.pseudo.pcx$x[Iw21.ptx,1],pch=16, cex=2.3, col="green3")
+points(euk.pseudo.pcx$x[Gw21.ptx,2] ~ euk.pseudo.pcx$x[Gw21.ptx,1],pch=16, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNw21.ptx,2] ~ euk.pseudo.pcx$x[BNw21.ptx,1], pch=16, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bw21.ptx,2] ~ euk.pseudo.pcx$x[Bw21.ptx,1],pch=16, cex=2.3, col="red3")
+points(euk.pseudo.pcx$x[Ip21.ptx,2] ~ euk.pseudo.pcx$x[Ip21.ptx,1],pch=15, cex=2.3, col= "green3")
+points(euk.pseudo.pcx$x[Gp21.ptx,2] ~ euk.pseudo.pcx$x[Gp21.ptx,1],pch=15, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNp21.ptx,2] ~ euk.pseudo.pcx$x[BNp21.ptx,1],pch=15, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bp21.ptx,2] ~ euk.pseudo.pcx$x[Bp21.ptx,1],pch=15, cex=2.3, col="red3")
+#2020
+points(euk.pseudo.pcx$x[Il20.ptx,2] ~ euk.pseudo.pcx$x[Il20.ptx,1],pch=2, cex=3, col="green3")
+points(euk.pseudo.pcx$x[Gl20.ptx,2] ~ euk.pseudo.pcx$x[Gl20.ptx,1],pch=2, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNl20.ptx,2] ~ euk.pseudo.pcx$x[BNl20.ptx,1], pch=2, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bl20.ptx,2] ~ euk.pseudo.pcx$x[Bl20.ptx,1], pch=2, cex=3, col="red3")
+points(euk.pseudo.pcx$x[Iw20.ptx,2] ~ euk.pseudo.pcx$x[Iw20.ptx,1],pch=1, cex=3, col="green3")
+points(euk.pseudo.pcx$x[Gw20.ptx,2] ~ euk.pseudo.pcx$x[Gw20.ptx,1],pch=1, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNw20.ptx,2] ~ euk.pseudo.pcx$x[BNw20.ptx,1], pch=1, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bw20.ptx,2] ~ euk.pseudo.pcx$x[Bw20.ptx,1],pch=1, cex=3, col="red3")
+points(euk.pseudo.pcx$x[Ip20.ptx,2] ~ euk.pseudo.pcx$x[Ip20.ptx,1],pch=0, cex=3, col= "green3")
+points(euk.pseudo.pcx$x[Gp20.ptx,2] ~ euk.pseudo.pcx$x[Gp20.ptx,1],pch=0, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNp20.ptx,2] ~ euk.pseudo.pcx$x[BNp20.ptx,1],pch=0, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bp20.ptx,2] ~ euk.pseudo.pcx$x[Bp20.ptx,1],pch=0, cex=3, col="red3")
+
+#points(euk.pseudo.pcx$x[Bp.ptx,2] ~ euk.pseudo.pcx$x[Bp.ptx,1],pch=15, cex=2.3, col="red")
+
+#points(euk.pseudo.pcx$x[Year2020,2] ~ euk.pseudo.pcx$x[Year2020,1],pch=3, cex=2, col="black")
+
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Water,1], ycoord = euk.pseudo.pcx$x[Water,2], lcolor = "black")
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Sediment,1], ycoord = euk.pseudo.pcx$x[Sediment,2], lcolor = "black")
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Prairie,1], ycoord = euk.pseudo.pcx$x[Prairie,2], lcolor = "black")
+
+
+legend(20,-45, legend=c("Gimlet","Island","Bean","Border"), col=c("blue","green3","gold","red3"),  title = "Lake Basin:", pch=c(17,17,17,17,17),bty="n")
+legend(-30,-45, legend=c("Soil", "Sediment", "Water"), col=c("blue", "blue", "blue"), title = "Habitat:",pch=c(15,17,16),bty="n")
+legend(70,-45, legend=c("2020", "2021"), col=c("blue", "blue", "blue"), title = "Year:", pch=c(17,1), bty="n")
+
+dev.off()
+
+# Look at betadisper 
+euk.pseudo.bd <- betadisper((euk.pseudo.dist),map$Yearplusid,type = "centroid")
+anova(euk.pseudo.bd) # P = 1.893e-06 
+TukeyHSD(euk.pseudo.bd) # 
+# PERMANOVA
+euk.czm.perm <- adonis2(euk.pseudo.dist~map$year*map$Grower*map$Field.I, permutations = 999) 
+euk.czm.perm # P = .001
+
+
+######Alpha Diversity#######
+################## Alpha diversity ###############
+Bac16S_otu <- otu_table(bac,taxa_are_rows = T)
+Bac16S_otu[1:3,]
+
+#order treatments
+map$id = factor(map$id, levels=c("Island Lake","Gimlet Lake","Bean Lake", "Border Lake", "Island Water","Gimlet Water","Bean Water", "Border Water","Island Prairie","Gimlet Prairie","Bean Prairie","Border Prairie"))
+sample_design <- sample_data(map)
+bacotu_all = phyloseq(Bac16S_otu, sample_data(map))
+bacotu_all
+
+########calculate richness indexes
+richness_bac <- estimate_richness(bacotu_all,measures=c("Observed","Shannon"))
+
+###construct data frame for statistic test among Treatment
+order_richness_bac <- richness_bac[order(rownames(richness_bac)),]
+richness_stat_bac<- cbind(order_richness_bac,map)
+
+####Test Significance of Richness
+#Define Habitat and lake As a factors
+richness_stat_bac$Habitat= as.factor(richness_stat_bac$Field.ID)
+richness_stat_bac$Lake= as.factor(richness_stat_bac$Grower)
+
+#GLM to test richness ("Observed")
+Richness<- glm(Observed~Habitat*Lake*year,data =richness_stat_bac)
+Anova(Richness, ddf="Kenward-Roger")
+rsq(Richness)
+
+emmeans(Richness, pairwise~Lake|Habitat)
+emmeans(Richness, pairwise~Lake|Habitat|year)
+emmeans(Richness, pairwise~Habitat|Lake|year)
+### extract and plot raw residuals
+resids1<-residuals(Richness)
+plot(resids1)
+
+
+
+###GLM for lakes as proxy
+
+###PRAIRE######
+bac_prairie_sub_map=subset(map, map$Field.ID=="WATER")
+bac_otu_prairie_sub =subset(bac, select=colnames(bac) %in% rownames(bac_prairie_sub_map))
+#check rows
+rownames(bac_prairie_sub_map)==colnames(bac_otu_prairie_sub)
+
+#GLM for prairie by lake
+glm_prairie= glmmTMB(as.numeric(Soil_pH)~precip1year+Grower,data =bac_prairie_sub_map)
+Anova(glm_prairie, ddf="Kenward-Roger")
+rsq(glm_prairie)
+
+emmeans(glm_prairie, pairwise~Grower)
+
+### extract and plot raw residuals
+resids1<-residuals(glm_prairie)
+plot(resids1)
+
+#Address dispersion
+f<-confint(glm_prairie)
+simulationOutput <- simulateResiduals(fittedModel = glm_prairie, n=1000,plot = T)
+
+
+#Variables co-correlation plot
+Potassium =as.numeric(bac_prairie_sub_map$Potassium_ppm)
+Calcium=as.numeric(bac_prairie_sub_map$Calcium_ppm)
+Sodium=as.numeric(bac_prairie_sub_map$Sodium_ppm)
+pH=as.numeric(bac_prairie_sub_map$Soil_pH)
+CEC=as.numeric(bac_prairie_sub_map$CEC.Sum.of.Cations.me.100g)
+Salt=as.numeric(bac_prairie_sub_map$Salts_mmho.cm)
+Chloride=as.numeric(bac_prairie_sub_map$Chloride_ppm)
+Iron=as.numeric(bac_prairie_sub_map$Iron_ppm)
+Organic_Matter = as.numeric(bac_prairie_sub_map$Organic.Matter.LOI..)
+Zinc = as.numeric(bac_prairie_sub_map$Zinc_ppm)
+Soil_Moisture= as.numeric(bac_prairie_sub_map$Soil_Moisture)
+Temperature_1_year_prior=as.numeric(bac_prairie_sub_map$temp1year)
+Precipitation_1_year_prior=as.numeric(bac_prairie_sub_map$precip1year)
+#year=as.numeric(bac_prairie_sub_map$year)
+Lake_level_change_1_year=as.numeric(bac_prairie_sub_map$year)
+library(corrplot)
+nonzero.numericvars=cbind(pH, Sodium, Potassium, Calcium,   Zinc)
+vars_cor<-cor(nonzero.numericvars[,1:5], method="pearson")
+testRes = cor.mtest(vars_cor, conf.level = 0.95)
+corrplot(vars_cor, type= "upper", diag  = F, tl.col = "black",p.mat = testRes$p,sig.level = 0.05)
+dev.off()
+
+
+######SEDIMENT####
+bac_sed_sub_map=subset(map, map$Field.ID=="SEDIMENT")
+bac_otu_sed_sub =subset(bac, select=colnames(bac) %in% rownames(bac_sed_sub_map))
+#check rows
+rownames(bac_sed_sub_map)==colnames(bac_otu_sed_sub)
+
+#GLM for prairie by lake
+hist(bac_sed_sub_map$Soil_pH)
+glm_sediment= glm(Soil_pH~precip1year+Grower,data =bac_sed_sub_map)
+Anova(glm_sediment, ddf="Kenward-Roger")
+rsq(glm_sediment)
+
+emmeans(glm_sediment, pairwise~Grower)
+### extract and plot raw residuals
+resids1<-residuals(glm_sediment)
+plot(resids1)
+
+#Address dispersion
+f<-confint(glm_sediment)
+simulationOutput <- simulateResiduals(fittedModel = glm_sediment, n=1000,plot = T)
+
+
+#Variables co-correlation plot
+Potassium =as.numeric(bac_sed_sub_map$Potassium_ppm)
+Calcium=as.numeric(bac_sed_sub_map$Calcium_ppm)
+Sodium=as.numeric(bac_sed_sub_map$Sodium_ppm)
+pH=as.numeric(bac_sed_sub_map$Soil_pH)
+CEC=as.numeric(bac_sed_sub_map$CEC.Sum.of.Cations.me.100g)
+Salt=as.numeric(bac_sed_sub_map$Salts_mmho.cm)
+Chloride=as.numeric(bac_sed_sub_map$Chloride_ppm)
+Iron=as.numeric(bac_sed_sub_map$Iron_ppm)
+Organic_Matter = as.numeric(bac_sed_sub_map$Organic.Matter.LOI..)
+Zinc = as.numeric(bac_sed_sub_map$Zinc_ppm)
+Soil_Moisture= as.numeric(bac_sed_sub_map$Soil_Moisture)
+Temperature_1_year_prior=as.numeric(bac_sed_sub_map$temp1year)
+Precipitation_1_year_prior=as.numeric(bac_sed_sub_map$precip1year)
+year=as.numeric(bac_sed_sub_map$year)
+
+library(corrplot)
+nonzero.numericvars=cbind(pH, Sodium, Potassium, Salt, CEC,  Chloride, Calcium,   Zinc, Organic_Matter, Iron,Soil_Moisture,Temperature_1_year_prior, Precipitation_1_year_prior,year)
+vars_cor<-cor(nonzero.numericvars[,1:14], method="pearson")
+testRes = cor.mtest(vars_cor, conf.level = 0.95)
+corrplot(vars_cor, type= "upper", diag  = F, tl.col = "black",p.mat = testRes$p,sig.level = 0.05)
+dev.off()
+
+
+######Water####
+bac_water_sub_map=subset(map, map$Field.ID=="WATER")
+bac_otu_water_sub =subset(bac, select=colnames(bac) %in% rownames(bac_water_sub_map))
+#check rows
+rownames(bac_water_sub_map)==colnames(bac_otu_water_sub)
+
+#GLM for prairie by lake
+hist(bac_water_sub_map$Soil_pH)
+glm_water= glm(as.numeric(Soil_pH)~precip1year+Grower,data =bac_water_sub_map)
+Anova(glm_water, ddf="Kenward-Roger")
+rsq(glm_water)
+
+emmeans(glm_sediment, pairwise~Grower)
+### extract and plot raw residuals
+resids1<-residuals(glm_sediment)
+plot(resids1)
+
+#Address dispersion
+f<-confint(glm_sediment)
+simulationOutput <- simulateResiduals(fittedModel = glm_sediment, n=1000,plot = T)
+
+
+#Variables co-correlation plot
+Potassium =as.numeric(bac_water_sub_map$Potassium_ppm)
+Calcium=as.numeric(bac_water_sub_map$Calcium_ppm)
+Sodium=as.numeric(bac_water_sub_map$Sodium_ppm)
+pH=as.numeric(bac_water_sub_map$Soil_pH)
+CEC=as.numeric(bac_water_sub_map$CEC.Sum.of.Cations.me.100g)
+Salt=as.numeric(bac_water_sub_map$Salts_mmho.cm)
+Chloride=as.numeric(bac_water_sub_map$Chloride_ppm)
+Iron=as.numeric(bac_water_sub_map$Iron_ppm)
+Organic_Matter = as.numeric(bac_water_sub_map$Organic.Matter.LOI..)
+Zinc = as.numeric(bac_water_sub_map$Zinc_ppm)
+Soil_Moisture= as.numeric(bac_water_sub_map$Soil_Moisture)
+Temperature_1_year_prior=as.numeric(bac_water_sub_map$temp1year)
+Precipitation_1_year_prior=as.numeric(bac_water_sub_map$precip1year)
+year=as.numeric(bac_water_sub_map$year)
+
+library(corrplot)
+nonzero.numericvars=cbind(pH, Sodium, Potassium, Chloride, Calcium,   Zinc, Iron)
+vars_cor<-cor(nonzero.numericvars[,1:7], method="pearson")
+testRes = cor.mtest(vars_cor, conf.level = 0.95)
+corrplot(vars_cor, type= "upper", diag  = F, tl.col = "black",p.mat = testRes$p,sig.level = 0.05)
+dev.off()
+
+
+
+
+
+
+#######EUKS########
+##import mapping file
+mapping <-read.table("All_years_chem.txt", header=T, row.names=1, comment.char="", sep='\t')
+map.sub <- mapping[order(rownames(mapping)),]
+map.sub$sample_name=rownames(map.sub)
+map<-subset(map.sub, map.sub$year!= "2019"& map.sub$Field.ID!="SHORELINE"& map.sub$Grower!="KOKJOHN LAKE"&map.sub$sample_name!="GM4Lake2021")
+
+
+
+#import OTU tables for nematodes, bacteria, fungi and microbial euaryotes
+eukotu_taxa <- read.table("Euk_OTU_table_for_WC_MS2.csv",quote="", sep=",", row.names = 1, header=T, check.names=F,blank.lines.skip = FALSE)
+#bacotu_only <- bacotu_taxa[,1:163]
+eukotu_filtered<-subset(eukotu_taxa, select=colnames(eukotu_taxa) %in% rownames(map))
+euk <- eukotu_filtered[,order(colnames(eukotu_filtered))]
+
+
+rownames(map)==colnames(euk)
+
+
+###remove counts lower than 0.00001% of reads
+euk=euk[rowSums(euk[])>136,]
+
+######PCOA#####
+
+
+# How many zeros?
+sum(euk== 0) #214810
+count=0
+#remove rows with 0 values
+map_beta<-subset(map, rownames(map)!= "BO2Water2021")
+euk_beta=subset(euk, select=colnames(euk) %in% rownames(map_beta))
+euk.just.esvs.1 <- data.frame(euk_beta[which(apply(euk_beta, 1,function(x){mean(x)}) > count),], 
+                              check.names=F)
+# count = 0.2 leads to 3818 ESVs rather than original 714, cutting out ESVs with fewer than 20 samples per row.
+
+# replace zeros
+euk.just.esvs.czm <- cmultRepl(t(euk.just.esvs.1),  label=0, method="CZM")
+
+# Vegdist and PCOA function in Ape package
+euk.just.esvs.pseudo.clr <- clr(euk.just.esvs.czm)
+
+
+euk.pseudo.dist <- vegdist(euk.just.esvs.pseudo.clr, method = "euclidean",binary = FALSE, diag = FALSE, upper = TRUE)
+euk.pseudo.pcx <- prcomp(euk.just.esvs.pseudo.clr)
+
+# Sum the total variance
+euk.pseudo.mvar <- sum(euk.pseudo.pcx$sdev^2)
+# Calculate the PC1 and PC2 variance
+PC1 <- paste("PC1: ", round(100*sum(euk.pseudo.pcx$sdev[1]^2)/euk.pseudo.mvar, 1),"%")
+PC2 <- paste("PC2: ", round(100*sum(euk.pseudo.pcx$sdev[2]^2)/euk.pseudo.mvar, 1),"%")
+# We are pasting together the component name and the variance to make an axes label
+
+
+# Make a pretty plot with no points yet:
+plot(euk.pseudo.pcx$x[,2] ~ euk.pseudo.pcx$x[,1], 
+     xlab=PC1, 
+     ylab=PC2,
+     cex=0.1,col="white",main="B)",
+     
+)
+
+# FUNCTION:
+Plot_ConvexHull<-function(xcoord, ycoord, lcolor){
+  hpts <- chull(x = xcoord, y = ycoord)
+  hpts <- c(hpts, hpts[1])
+  lines(xcoord[hpts], ycoord[hpts], col = lcolor)
+}
+#subset vectors for the positions in the metadata that correspond to groups
+Bp21.ptx <- which(map$Yearplusid=="Border Prairie 2021")
+Bw21.ptx <- which(map$Yearplusid=="Border Water 2021")
+Bl21.ptx <- which(map$Yearplusid=="Border Lake 2021")
+Ip21.ptx <- which(map$Yearplusid=="Island Prairie 2021")
+Iw21.ptx <- which(map$Yearplusid=="Island Water 2021")
+Il21.ptx <- which(map$Yearplusid=="Island Lake 2021")
+Gp21.ptx <- which(map$Yearplusid=="Gimlet Prairie 2021")
+Gw21.ptx <- which(map$Yearplusid=="Gimlet Water 2021")
+Gl21.ptx <- which(map$Yearplusid=="Gimlet Lake 2021")
+BNp21.ptx <- which(map$Yearplusid=="Bean Prairie 2021")
+BNw21.ptx <- which(map$Yearplusid=="Bean Water 2021")
+BNl21.ptx <- which(map$Yearplusid=="Bean Lake 2021")
+
+Bp20.ptx <- which(map$Yearplusid=="Border Prairie 2020")
+Bw20.ptx <- which(map$Yearplusid=="Border Water 2020")
+Bl20.ptx <- which(map$Yearplusid=="Border Lake 2020")
+Ip20.ptx <- which(map$Yearplusid=="Island Prairie 2020")
+Iw20.ptx <- which(map$Yearplusid=="Island Water 2020")
+Il20.ptx <- which(map$Yearplusid=="Island Lake 2020")
+Gp20.ptx <- which(map$Yearplusid=="Gimlet Prairie 2020")
+Gw20.ptx <- which(map$Yearplusid=="Gimlet Water 2020")
+Gl20.ptx <- which(map$Yearplusid=="Gimlet Lake 2020")
+BNp20.ptx <- which(map$Yearplusid=="Bean Prairie 2020")
+BNw20.ptx <- which(map$Yearplusid=="Bean Water 2020")
+BNl20.ptx <- which(map$Yearplusid=="Bean Lake 2020")
+Prairie <- which(map$Field.ID == "PRAIRIE")
+Water <- which(map$Field.ID == "WATER")
+Sediment <-which(map$Field.ID=="SEDIMENT")
+Year2021 <-which(map$year=="2021")
+Year2020 <-which(map$year=="2020")
+# plot the points for each group using points()
+#2021
+points(euk.pseudo.pcx$x[Il21.ptx,2] ~ euk.pseudo.pcx$x[Il21.ptx,1],pch=17, cex=2.3, col="green3")
+points(euk.pseudo.pcx$x[Gl21.ptx,2] ~ euk.pseudo.pcx$x[Gl21.ptx,1],pch=17, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNl21.ptx,2] ~ euk.pseudo.pcx$x[BNl21.ptx,1], pch=17, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bl21.ptx,2] ~ euk.pseudo.pcx$x[Bl21.ptx,1], pch=17, cex=2.3, col="red3")
+points(euk.pseudo.pcx$x[Iw21.ptx,2] ~ euk.pseudo.pcx$x[Iw21.ptx,1],pch=16, cex=2.3, col="green3")
+points(euk.pseudo.pcx$x[Gw21.ptx,2] ~ euk.pseudo.pcx$x[Gw21.ptx,1],pch=16, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNw21.ptx,2] ~ euk.pseudo.pcx$x[BNw21.ptx,1], pch=16, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bw21.ptx,2] ~ euk.pseudo.pcx$x[Bw21.ptx,1],pch=16, cex=2.3, col="red3")
+points(euk.pseudo.pcx$x[Ip21.ptx,2] ~ euk.pseudo.pcx$x[Ip21.ptx,1],pch=15, cex=2.3, col= "green3")
+points(euk.pseudo.pcx$x[Gp21.ptx,2] ~ euk.pseudo.pcx$x[Gp21.ptx,1],pch=15, cex=2.3, col="blue")
+points(euk.pseudo.pcx$x[BNp21.ptx,2] ~ euk.pseudo.pcx$x[BNp21.ptx,1],pch=15, cex=2.3, col="gold")
+points(euk.pseudo.pcx$x[Bp21.ptx,2] ~ euk.pseudo.pcx$x[Bp21.ptx,1],pch=15, cex=2.3, col="red3")
+#2020
+points(euk.pseudo.pcx$x[Il20.ptx,2] ~ euk.pseudo.pcx$x[Il20.ptx,1],pch=2, cex=3, col="green3")
+points(euk.pseudo.pcx$x[Gl20.ptx,2] ~ euk.pseudo.pcx$x[Gl20.ptx,1],pch=2, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNl20.ptx,2] ~ euk.pseudo.pcx$x[BNl20.ptx,1], pch=2, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bl20.ptx,2] ~ euk.pseudo.pcx$x[Bl20.ptx,1], pch=2, cex=3, col="red3")
+points(euk.pseudo.pcx$x[Iw20.ptx,2] ~ euk.pseudo.pcx$x[Iw20.ptx,1],pch=1, cex=3, col="green3")
+points(euk.pseudo.pcx$x[Gw20.ptx,2] ~ euk.pseudo.pcx$x[Gw20.ptx,1],pch=1, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNw20.ptx,2] ~ euk.pseudo.pcx$x[BNw20.ptx,1], pch=1, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bw20.ptx,2] ~ euk.pseudo.pcx$x[Bw20.ptx,1],pch=1, cex=3, col="red3")
+points(euk.pseudo.pcx$x[Ip20.ptx,2] ~ euk.pseudo.pcx$x[Ip20.ptx,1],pch=0, cex=3, col= "green3")
+points(euk.pseudo.pcx$x[Gp20.ptx,2] ~ euk.pseudo.pcx$x[Gp20.ptx,1],pch=0, cex=3, col="blue")
+points(euk.pseudo.pcx$x[BNp20.ptx,2] ~ euk.pseudo.pcx$x[BNp20.ptx,1],pch=0, cex=3, col="gold")
+points(euk.pseudo.pcx$x[Bp20.ptx,2] ~ euk.pseudo.pcx$x[Bp20.ptx,1],pch=0, cex=3, col="red3")
+
+#points(euk.pseudo.pcx$x[Bp.ptx,2] ~ euk.pseudo.pcx$x[Bp.ptx,1],pch=15, cex=2.3, col="red")
+
+#points(euk.pseudo.pcx$x[Year2020,2] ~ euk.pseudo.pcx$x[Year2020,1],pch=3, cex=2, col="black")
+
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Water,1], ycoord = euk.pseudo.pcx$x[Water,2], lcolor = "black")
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Sediment,1], ycoord = euk.pseudo.pcx$x[Sediment,2], lcolor = "black")
+Plot_ConvexHull(xcoord = euk.pseudo.pcx$x[Prairie,1], ycoord = euk.pseudo.pcx$x[Prairie,3], lcolor = "black")
+
+
+legend(20,-45, legend=c("Gimlet","Island","Bean","Border"), col=c("blue","green3","gold","red3"),  title = "Lake Basin:", pch=c(17,17,17,17,17),bty="n")
+legend(-30,-45, legend=c("Soil", "Sediment", "Water"), col=c("blue", "blue", "blue"), title = "Habitat:",pch=c(15,17,16),bty="n")
+legend(70,-45, legend=c("2020", "2021"), col=c("blue", "blue", "blue"), title = "Year:", pch=c(17,1), bty="n")
+
+# Look at betadisper 
+euk.pseudo.bd <- betadisper((euk.pseudo.dist),map_beta$Yearplusid,type = "centroid")
+anova(euk.pseudo.bd) # P = 1.893e-06 
+TukeyHSD(euk.pseudo.bd) # 
+# PERMANOVA
+euk.czm.perm <- adonis2(euk.pseudo.dist~map_beta$year*map_beta$Grower*map_beta$Field.ID) 
+euk.czm.perm # P = .001
+
+
+######Alpha Diversity#######
+################## Alpha diversity ###############
+Euk_otu <- otu_table(euk,taxa_are_rows = T)
+Euk_otu[1:3,]
+
+#order treatments
+map$id = factor(map$id, levels=c("Island Lake","Gimlet Lake","Bean Lake", "Border Lake", "Island Water","Gimlet Water","Bean Water", "Border Water","Island Prairie","Gimlet Prairie","Bean Prairie","Border Prairie"))
+sample_design <- sample_data(map)
+eukotu_all = phyloseq(Euk_otu, sample_data(map))
+eukotu_all
+
+########calculate richness indexes
+richness_euk <- estimate_richness(eukotu_all,measures=c("Observed","Shannon"))
+
+###construct data frame for statistic test among Treatment
+order_richness_euk <- richness_euk[order(rownames(richness_euk)),]
+richness_stat_euk<- cbind(order_richness_euk,map)
+
+####Test Significance of Richness
+#Define Habitat and lake As a factors
+richness_stat_euk$Habitat= as.factor(richness_stat_euk$Field.ID)
+richness_stat_euk$Lake= as.factor(richness_stat_euk$Grower)
+
+#GLM to test richness ("Observed")
+Richness<- glm(Shannon~Habitat*Lake*year,data =richness_stat_euk)
+Anova(Richness, ddf="Kenward-Roger")
+rsq(Richness)
+
+emmeans(Richness, pairwise~Lake|Habitat)
+emmeans(Richness, pairwise~Lake|Habitat|year)
+emmeans(Richness, pairwise~Habitat|Lake|year)
+emmeans(Richness, pairwise~Habitat)
+### extract and plot raw residuals
+resids1<-residuals(Richness)
+plot(resids1)
+
+
+
+
+###Fungi and metazoans########
+
+
+mapping <-read.table("All_years_chem.txt", header=T, row.names=1, comment.char="", sep='\t')
+map.sub <- mapping[order(rownames(mapping)),]
+map.sub$sample_name=rownames(map.sub)
+map<-subset(map.sub, map.sub$year!= "2019"& map.sub$Field.ID!="SHORELINE"& map.sub$Grower!="KOKJOHN LAKE"&map.sub$sample_name!="GM4Lake2021")
+
+#import OTU tables for nematodes, bacteria, fungi and microbial euaryotes
+funmetotu_taxa <- read.table("fungi_and_metazoans.csv",quote="", sep=",", row.names = 1, header=T, check.names=F,blank.lines.skip = FALSE)
+#bacotu_only <- bacotu_taxa[,1:163]
+funmetotu_filtered<-subset(funmetotu_taxa, select=colnames(funmetotu_taxa) %in% rownames(map))
+funmet <- funmetotu_filtered[,order(colnames(funmetotu_filtered))]
+
+
+rownames(map)==colnames(funmet)
+
+
+###remove counts lower than 0.00001% of reads
+funmet=funmet[rowSums(funmet[])>136,]
+
+######PCOA#####
+
+
+# How many zeros?
+sum(otu== 0) #214810
+count=0
+#remove rows with 0 values
+map_beta<-subset(map, map$sample_name!= "BO2Water2021")
+funmet_beta=subset(funmet, select=colnames(funmet) %in% rownames(map_beta))
+funment.just.esvs.1 <- data.frame(funmet_beta[which(apply(funmet_beta, 1,function(x){mean(x)}) > count),], 
+                              check.names=F)
+# count = 0.2 leads to 3818 ESVs rather than original 714, cutting out ESVs with fewer than 20 samples per row.
+
+# replace zeros
+funmet.just.esvs.czm <- cmultRepl(t(funment.just.esvs.1),  label=0, method="CZM")
+
+# Vegdist and PCOA function in Ape package
+funmet.just.esvs.pseudo.clr <- clr(funmet.just.esvs.czm)
+
+
+funmet.pseudo.dist <- vegdist(funmet.just.esvs.pseudo.clr, method = "euclidean",binary = FALSE, diag = FALSE, upper = TRUE)
+funmet.pseudo.pcx <- prcomp(funmet.just.esvs.pseudo.clr)
+
+# Sum the total variance
+funmet.pseudo.mvar <- sum(funmet.pseudo.pcx$sdev^2)
+# Calculate the PC1 and PC2 variance
+PC1 <- paste("PC1: ", round(100*sum(funmet.pseudo.pcx$sdev[1]^2)/funmet.pseudo.mvar, 1),"%")
+PC2 <- paste("PC2: ", round(100*sum(funmet.pseudo.pcx$sdev[2]^2)/funmet.pseudo.mvar, 1),"%")
+# We are pasting together the component name and the variance to make an axes label
+
+
+# Make a pretty plot with no points yet:
+plot(funmet.pseudo.pcx$x[,2] ~ funmet.pseudo.pcx$x[,1], 
+     xlab=PC1, 
+     ylab=PC2,
+     cex=0.1,col="white",main="Fungi and Metazoans",
+     
+)
+
+# FUNCTION:
+Plot_ConvexHull<-function(xcoord, ycoord, lcolor){
+  hpts <- chull(x = xcoord, y = ycoord)
+  hpts <- c(hpts, hpts[1])
+  lines(xcoord[hpts], ycoord[hpts], col = lcolor)
+}
+#subset vectors for the positions in the metadata that correspond to groups
+Bp.ptx <- which(map_beta$id=="Border Prairie")
+Bw.ptx <- which(map_beta$id=="Border Water")
+Bl.ptx <- which(map_beta$id=="Border Lake")
+Ip.ptx <- which(map_beta$id=="Island Prairie")
+Iw.ptx <- which(map_beta$id=="Island Water ")
+Il.ptx <- which(map_beta$id=="Island Lake")
+Gp.ptx <- which(map_beta$id=="Gimlet Prairie")
+Gw.ptx <- which(map_beta$id=="Gimlet Water")
+Gl.ptx <- which(map_beta$id=="Gimlet Lake")
+BNp.ptx <- which(map_beta$id=="Bean Prairie")
+BNw.ptx <- which(map_beta$id=="Bean Water")
+BNl.ptx <- which(map_beta$id=="Bean Lake")
+Prairie <- which(map_beta$Field.ID == "PRAIRIE")
+Water <- which(map_beta$Field.ID == "WATER")
+Sediment <-which(map_beta$Field.ID=="SEDIMENT")
+Year2021 <-which(map_beta$year=="2021")
+Year2020 <-which(map_beta$year=="2020")
+# plot the points for each group using points()
+#2021
+points(funmet.pseudo.pcx$x[Il.ptx,2] ~ funmet.pseudo.pcx$x[Il.ptx,1],pch=17, cex=2.3, col="blue")
+points(funmet.pseudo.pcx$x[Gl.ptx,2] ~ funmet.pseudo.pcx$x[Gl.ptx,1],pch=17, cex=2.3, col="lightblue")
+points(funmet.pseudo.pcx$x[BNl.ptx,2] ~ funmet.pseudo.pcx$x[BNl.ptx,1], pch=17, cex=2.3, col="red")
+points(funmet.pseudo.pcx$x[Bl.ptx,2] ~ funmet.pseudo.pcx$x[Bl.ptx,1], pch=17, cex=2.3, col="green")
+points(funmet.pseudo.pcx$x[Iw.ptx,2] ~ funmet.pseudo.pcx$x[Iw.ptx,1],pch=16, cex=2.3, col="blue")
+points(funmet.pseudo.pcx$x[Gw.ptx,2] ~ funmet.pseudo.pcx$x[Gw.ptx,1],pch=16, cex=2.3, col="lightblue")
+points(funmet.pseudo.pcx$x[BNw.ptx,2] ~ funmet.pseudo.pcx$x[BNw.ptx,1], pch=16, cex=2.3, col="red")
+points(funmet.pseudo.pcx$x[Bw.ptx,2] ~ funmet.pseudo.pcx$x[Bw.ptx,1],pch=16, cex=2.3, col="green")
+points(funmet.pseudo.pcx$x[Ip.ptx,2] ~ funmet.pseudo.pcx$x[Ip.ptx,1],pch=15, cex=2.3, col= "blue")
+points(funmet.pseudo.pcx$x[Gp.ptx,2] ~ funmet.pseudo.pcx$x[Gp.ptx,1],pch=15, cex=2.3, col="lightblue")
+points(funmet.pseudo.pcx$x[BNp.ptx,2] ~ funmet.pseudo.pcx$x[BNp.ptx,1],pch=15, cex=2.3, col="red")
+points(funmet.pseudo.pcx$x[Bp.ptx,2] ~ funmet.pseudo.pcx$x[Bp.ptx,1],pch=15, cex=2.3, col="green")
+
+#points(funmet.pseudo.pcx$x[Bp.ptx,2] ~ funmet.pseudo.pcx$x[Bp.ptx,1],pch=15, cex=2.3, col="red")
+
+
+points(funmet.pseudo.pcx$x[Year2019,2] ~ funmet.pseudo.pcx$x[Year2019,1],pch=8, cex=2, col="black")
+points(funmet.pseudo.pcx$x[Year2020,2] ~ funmet.pseudo.pcx$x[Year2020,1],pch=3, cex=2, col="black")
+
+Plot_ConvexHull(xcoord = funmet.pseudo.pcx$x[Water,1], ycoord = funmet.pseudo.pcx$x[Water,2], lcolor = "black")
+Plot_ConvexHull(xcoord = funmet.pseudo.pcx$x[Sediment,1], ycoord = funmet.pseudo.pcx$x[Sediment,2], lcolor = "black")
+Plot_ConvexHull(xcoord = funmet.pseudo.pcx$x[Prairie,1], ycoord = funmet.pseudo.pcx$x[Prairie,2], lcolor = "black")
+
+
+legend(10,-10, legend=c("Island","Gimlet","Border","Bean"), col=c("blue","lightblue","green","red"), pch=c(17,17,17,17,17))
+legend(33,-10, legend=c("Sediment", "Water", "Prairie"), col=c("black", "black", "black"), pch=c(17,16,15))
+legend(33,-20, legend=c("2020", "2021"), col=c("black", "black", "black"), pch=c(3,1))
+
+# Look at betadisper 
+euk.pseudo.bd <- betadisper((funmet.pseudo.dist),map_beta$Yearplusid,type = "centroid")
+anova(euk.pseudo.bd) # P = 1.893e-06 
+TukeyHSD(euk.pseudo.bd) # 
+# PERMANOVA
+euk.czm.perm <- adonis2(funmet.pseudo.dist~map_beta$year*map_beta$Grower*map_beta$Field.ID) 
+euk.czm.perm # P = .001
+
+rowSums(funmet)
+######Alpha Diversity#######
+################## Alpha diversity ###############
+FunMet_otu <- otu_table(funmet,taxa_are_rows = T)
+FunMet_otu[1:3,]
+
+#order treatments
+map$id = factor(map$id, levels=c("Island Lake","Gimlet Lake","Bean Lake", "Border Lake", "Island Water","Gimlet Water","Bean Water", "Border Water","Island Prairie","Gimlet Prairie","Bean Prairie","Border Prairie"))
+sample_design <- sample_data(map)
+funmetotu_all = phyloseq(FunMet_otu, sample_data(map))
+funmetotu_all
+
+########calculate richness indexes
+richness_funmet <- estimate_richness(funmetotu_all,measures=c("Observed","Shannon"))
+
+###construct data frame for statistic test among Treatment
+order_richness_funmet <- richness_funmet[order(rownames(richness_funmet)),]
+richness_stat_funmet<- cbind(order_richness_funmet,map)
+
+####Test Significance of Richness
+#Define Habitat and lake As a factors
+richness_stat_funmet$Habitat= as.factor(richness_stat_funmet$Field.ID)
+richness_stat_funmet$Lake= as.factor(richness_stat_funmet$Grower)
+
+#GLM to test richness ("Observed")
+Richness<- glm(Shannon~Habitat*Lake*year,data =richness_stat_funmet)
+Anova(Richness, ddf="Kenward-Roger")
+rsq(Richness)
+
+emmeans(Richness, pairwise~Lake|Habitat)
+emmeans(Richness, pairwise~Lake|Habitat|year)
+emmeans(Richness, pairwise~Habitat|Lake|year)
+emmeans(Richness, pairwise~Habitat)
+### extract and plot raw residuals
+resids1<-residuals(Richness)
+plot(resids1)
+
+
